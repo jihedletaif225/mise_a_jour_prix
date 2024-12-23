@@ -1,7 +1,15 @@
 
 
+
 import logging
+import streamlit as st
 from playwright.async_api import async_playwright
+import asyncio
+import platform
+
+
+if platform.system() == "Windows":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,16 +23,12 @@ class RestoconceptAutomation:
     async def login(self, page) -> bool:
         try:
             logger.info("Navigating to login page...")
-            # Navigate to login page
             await page.goto("https://www.restoconcept.com/admin/logon.asp")
-            # Fill login credentials
             await page.fill("#adminuser", self.username)
             await page.fill("#adminPass", self.password)
-            # Click login button
             await page.click("#btn1")
 
             try:
-                # Wait for the page to load after login
                 logger.info("Waiting for the page to load after login...")
                 await page.wait_for_selector('td[align="center"][style="background-color:#eeeeee"]:has-text("© Copyright 2024 - Restoconcept")', timeout=5000)
                 logger.info("Login successful.")
@@ -36,87 +40,89 @@ class RestoconceptAutomation:
             logger.error(f"Error during login: {e}")
             return False
 
-    async def perform_search_and_uncheck(self, page) -> bool:
+    async def perform_search_and_uncheck(self, page, reference) -> bool:
         try:
-            logger.info("Navigating to the search page...")
-            # Navigate to the search page
+            logger.info(f"Navigating to the search page for reference {reference}...")
             await page.goto("https://www.restoconcept.com/admin/marges.asp")
-            
-            logger.info("Entering reference number...")
-            # Enter the reference number into the input field
+
+            logger.info(f"Entering reference number: {reference}...")
             reference_input_selector = 'input[name="rch_phrase"]'
-            await page.fill(reference_input_selector, "6775987")
+            await page.fill(reference_input_selector, reference)
 
             logger.info("Clicking the search button...")
-            # Click the search button
             search_button_selector = 'button[type="submit"]'
             await page.click(search_button_selector)
 
             logger.info("Waiting for checkbox to appear...")
-            # Wait for the checkbox to appear after search
             checkbox_selector = 'td[style="padding:4px; border:1px #666 solid; text-align:center;"] input[type="checkbox"][name="active"]'
 
             try:
-                # Wait for the checkbox to be visible
                 await page.wait_for_selector(checkbox_selector, timeout=5000)
                 logger.info("Checkbox is visible.")
-                
-                # Check if the checkbox is checked
                 checkbox = await page.query_selector(checkbox_selector)
-                is_checked = await checkbox.get_attribute("checked")
-                logger.info(f"Checkbox checked attribute: {is_checked}")
-                
-                # If checked, uncheck it
-                # if is_checked is not None:
-                    # logger.info("Unchecking the checkbox...")
                 await checkbox.uncheck()
-                    
-                    # Selector for the "Actualiser" input button
+
                 actualiser_button_selector = 'td[style="padding:4px; border:1px #666 solid; text-align:center;"] input[type="submit"][value="Actualiser"]'
-                    
-                logger.info("Clicking the 'Actualiser' button...")
-                    # Click the "Actualiser" button
                 await page.click(actualiser_button_selector)
 
-                logger.info("Checkbox unchecked and 'Actualiser' button clicked successfully.")
+                logger.info(f"Checkbox unchecked and 'Actualiser' button clicked successfully for reference {reference}.")
                 return True
-                # else:
-                #     logger.info("Checkbox is already unchecked.")
-                #     return True
             except Exception as e:
-                logger.error(f"Error while interacting with checkbox: {e}")
+                logger.error(f"Error while interacting with checkbox for reference {reference}: {e}")
                 return False
         except Exception as e:
-            logger.error(f"Error during search and uncheck: {e}")
+            logger.error(f"Error during search and uncheck for reference {reference}: {e}")
             return False
 
-async def main():
+async def main(username, password, references):
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  # You can change to True for headless mode
+        browser = await p.chromium.launch(headless=False)
         page = await browser.new_page()
-
-        # Replace with actual credentials
-        username = "letaief"
-        password = "mohamed jihe"
 
         automation = RestoconceptAutomation(username, password)
 
-        # Login
         logged_in = await automation.login(page)
         if logged_in:
             logger.info("Login successful.")
-            # Perform search and uncheck checkbox
-            result = await automation.perform_search_and_uncheck(page)
-            if result:
-                logger.info("Task completed successfully.")
-            else:
-                logger.error("Failed to complete the task.")
+            for reference in references:
+                logger.info(f"Processing reference: {reference}")
+                result = await automation.perform_search_and_uncheck(page, reference)
+                if result:
+                    logger.info(f"Task completed successfully for reference {reference}.")
+                else:
+                    logger.error(f"Failed to complete the task for reference {reference}.")
         else:
             logger.error("Login failed.")
 
         await browser.close()
 
-# Run the automation
+# Streamlit interface
+def run_streamlit():
+    st.title("Restoconcept Automation")
+
+    # User inputs with Streamlit interface
+    username = st.text_input("Username", value="")
+    password = st.text_input("Password", value="", type="password")
+    references = st.text_area("Product References (one per line)", "").splitlines()
+
+    # Handle button click
+    if st.button("Start Automation"):
+        if username and password and references:
+            # Display a progress bar for the task
+            progress = st.progress(0)
+            status_text = st.empty()
+
+            try:
+                # Start automation and provide progress updates
+                for idx, reference in enumerate(references, 1):
+                    status_text.text(f"Processing reference {reference} ({idx}/{len(references)})...")
+                    asyncio.run(main(username, password, [reference]))
+                    progress.progress(int((idx / len(references)) * 100))
+                st.success("Automation completed successfully for all references.")
+            except Exception as e:
+                st.error(f"An error occurred during automation: {e}")
+        else:
+            st.warning("Please fill in all the fields: username, password, and references.")
+
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    run_streamlit()
