@@ -11,6 +11,7 @@ import platform
 if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -74,9 +75,9 @@ class RestoconceptAutomation:
             logger.error(f"Error during search and uncheck for reference {reference}: {e}")
             return False
 
-async def main(username, password, references):
+async def main(username, password, references, headless):
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=headless)  # Use the headless parameter here
         page = await browser.new_page()
 
         automation = RestoconceptAutomation(username, password)
@@ -105,6 +106,9 @@ def run_streamlit():
     password = st.text_input("Password", value="", type="password")
     references = st.text_area("Product References (one per line)", "").splitlines()
 
+    # Checkbox for headless mode
+    headless = st.checkbox("Run in headless mode?", value=True)
+
     # Handle button click
     if st.button("Start Automation"):
         if username and password and references:
@@ -116,7 +120,7 @@ def run_streamlit():
                 # Start automation and provide progress updates
                 for idx, reference in enumerate(references, 1):
                     status_text.text(f"Processing reference {reference} ({idx}/{len(references)})...")
-                    asyncio.run(main(username, password, [reference]))
+                    asyncio.run(main(username, password, [reference], headless))
                     progress.progress(int((idx / len(references)) * 100))
                 st.success("Automation completed successfully for all references.")
             except Exception as e:
