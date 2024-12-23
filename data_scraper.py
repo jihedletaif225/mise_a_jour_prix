@@ -4,7 +4,7 @@ import asyncio
 from playwright.async_api import async_playwright
 import pandas as pd
 import logging
-from asyncio import ProactorEventLoop
+# from asyncio import ProactorEventLoop
 import platform
 
 
@@ -91,7 +91,7 @@ st.title("RestauConcept Data Scraper")
 st.sidebar.header("User Login")
 username = st.sidebar.text_input("Username")
 password = st.sidebar.text_input("Password", type="password")
-marque = st.sidebar.text_input("Supplier/Brand (Marque)")
+marque = st.sidebar.text_input("Supplier/Brand (Marque)").strip()
 
 if st.sidebar.button("Start Scraping"):
     if not username or not password or not marque:
