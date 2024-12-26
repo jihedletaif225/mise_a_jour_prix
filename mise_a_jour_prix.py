@@ -1,182 +1,190 @@
 
-
-
 import streamlit as st
 from datetime import datetime
-# import openpyxl
 from plyer import notification
 import pandas as pd
 import altair as alt
 import re
+import tempfile
 
-def clean_price(price):
-    """
-    Cleans and standardizes a single price string.
-    
-    Args:
-        price (str): The price string to clean.
-        
-    Returns:
-        float: The cleaned price as a float, or None if invalid.
-    """
-    if price is None or price == "":  # Handle missing values
-        return None
-    try:
-        # Remove all non-numeric characters except for the decimal point
-        cleaned = re.sub(r"[^\d.]", "", str(price))
-        # Convert to float
-        return float(cleaned) if cleaned else None
-    except ValueError:
-        return None
-def compare_files(file1, file2):
-    old_wb = pd.read_excel(file1)
-    new_wb = pd.read_excel(file2)
-    old_sheet = old_wb.active
-    new_sheet = new_wb.active
-    
-    price_changes = []
-    new_products = []
-    products_to_deactivate = []
-    
-    old_data = {old_sheet[f'A{i}'].value: old_sheet[f'C{i}'].value for i in range(2, old_sheet.max_row + 1)}
-    new_data = {new_sheet[f'A{i}'].value: new_sheet[f'C{i}'].value for i in range(2, new_sheet.max_row + 1)}
-    
-    # Check for price changes and new products
-    for ref, new_price in new_data.items():
-        if ref in old_data:
-            old_price = old_data[ref]
-            if old_price != new_price:
-                price_changes.append((ref, old_price, new_price))
-        else:
-            # If the product reference is new
-            new_products.append((ref, new_price))
-    
-    # Check for products to deactivate
-    for ref in old_data:
-        if ref not in new_data:
-            products_to_deactivate.append(ref)
-    
-    return price_changes, new_products, products_to_deactivate
+class PriceUpdateLogic:
+    def __init__(self):
+        self.price_changes = []
+        self.new_products = []
+        self.products_to_deactivate = []
 
-def notify_changes(price_changes, new_products, products_to_deactivate):
-    today = datetime.now().strftime("%Y-%m-%d")
-    filename = f"price_changes_{today}.txt"
-    
-    with open(filename, 'w') as f:
-        if price_changes:
-            f.write(f"{len(price_changes)} products have price changes:\n")
-            for ref, old, new in price_changes:
-                diff = clean_price(new) - clean_price(old)
-                f.write(f"Reference {ref}: Old Price {old}, New Price {new}, Difference: {diff}\n")
-        else:
-            f.write("No price changes detected this week.\n")
-        
-        f.write("\n")  # Add a blank line for separation
-        
-        if new_products:
-            f.write(f"{len(new_products)} new products found:\n")
-            for ref, price in new_products:
-                f.write(f"Reference {ref}, Price: {price}\n")
-        else:
-            f.write("No new products found this week.\n")
-        
-        f.write("\n")  # Add a blank line for separation
-        
-        if products_to_deactivate:
-            f.write(f"{len(products_to_deactivate)} products to deactivate:\n")
-            for ref in products_to_deactivate:
-                f.write(f"Reference {ref}\n")
-        else:
-            f.write("No products to deactivate this week.\n")
-    print(f"Detailed information has been written to {filename}")
-    # Prepare notification message
-    notification_message = (
-        f"Price changes: {len(price_changes)}\n"
-        f"New products: {len(new_products)}\n"
-        f"Products to deactivate: {len(products_to_deactivate)}\n"
-        f"Details in {filename}"
-    )
-    # Show notification with plyer (persistent until dismissed manually)
-    notification.notify(
-        title="Product Update Summary",
-        message=notification_message,
-        timeout=36000  # This keeps the notification until manually dismissed
-    )
-    return len(price_changes)
+    @staticmethod
+    def clean_price(price):
+        """Cleans and standardizes a single price string."""
+        if price is None or price == "":
+            return None
+        try:
+            cleaned = re.sub(r"[^\d.]", "", str(price))
+            return float(cleaned) if cleaned else None
+        except ValueError:
+            return None
 
-def save_new_products(new_products):
-    today = datetime.now().strftime("%Y-%m-%d")
-    new_file = f"new_products_{today}.xlsx"
-    
-    df = pd.DataFrame(new_products, columns=['Reference', 'Price'])
-    df.to_excel(new_file, index=False)
-    print(f"New products saved to {new_file}")
+    def compare_files(self, file1, file2):
+        """Compares two Excel files and identifies changes, additions, and removals."""
+        old_data = pd.read_excel(file1).set_index('Reference').to_dict(orient='index')
+        new_data = pd.read_excel(file2).set_index('Reference').to_dict(orient='index')
 
-def main():
-    st.set_page_config(page_title="Product Update App", layout="wide", initial_sidebar_state="expanded")
+        for ref in old_data:
+            old_data[ref]['Price'] = self.clean_price(old_data[ref].get('Price'))
 
-    st.title("Product Update App")
-    st.sidebar.title("Options")
+        for ref in new_data:
+            new_data[ref]['Price'] = self.clean_price(new_data[ref].get('Price'))
 
-    # Prompt user to select the two Excel files
-    file1 = st.sidebar.file_uploader("Select the older Excel file", type=["xlsx"])
-    file2 = st.sidebar.file_uploader("Select the newer Excel file", type=["xlsx"])
+        price_changes = []
+        new_products = []
+        products_to_deactivate = []
 
-    if file1 and file2:
-        # Call the compare_files function
-        price_changes, new_products, products_to_deactivate = compare_files(file1, file2)
+        for ref, new_row in new_data.items():
+            if ref in old_data:
+                old_price = old_data[ref].get('Price')
+                new_price = new_row.get('Price')
+                if old_price != new_price:
+                    price_changes.append((ref, old_price, new_price))
+            else:
+                new_products.append((ref, new_row.get('Price')))
 
-        # Call the notify_changes function
-        num_price_changes = notify_changes(price_changes, new_products, products_to_deactivate)
+        for ref in old_data:
+            if ref not in new_data:
+                products_to_deactivate.append(ref)
 
-        # Call the save_new_products function
-        save_new_products(new_products)
+        self.price_changes = price_changes
+        self.new_products = new_products
+        self.products_to_deactivate = products_to_deactivate
 
-        st.write(f"Processing completed. {num_price_changes} price changes detected.")
+    def notify_changes(self):
+        """Sends a notification summarizing the changes."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        filename = f"price_changes_{today}.txt"
 
-        # Display the results
-        st.subheader("Price Changes")
-        price_changes_df = pd.DataFrame(price_changes, columns=['Reference', 'Old Price', 'New Price'])
-        price_changes_df['Difference'] = price_changes_df['New Price'] - price_changes_df['Old Price']
-        price_changes_df['Difference'] = price_changes_df['Difference'].apply(lambda x: f"+{x:.2f}" if x > 0 else f"{x:.2f}")
-        
-        # Convert 'Difference' to string before applying the style
-        price_changes_df = price_changes_df.style.applymap(
-            lambda x: 'color:green' if isinstance(x, str) and x.startswith('+') else 'color:red',
-            subset=['Difference']
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as temp_file:
+            temp_filename = temp_file.name
+            with open(temp_filename, 'w') as f:
+                if self.price_changes:
+                    f.write(f"{len(self.price_changes)} products have price changes:\n")
+                    for ref, old, new in self.price_changes:
+                        f.write(f"Reference {ref}: Old Price {old}, New Price {new}\n")
+                else:
+                    f.write("No price changes detected this week.\n")
+
+                if self.new_products:
+                    f.write(f"\n{len(self.new_products)} new products found:\n")
+                    for ref, price in self.new_products:
+                        f.write(f"Reference {ref}, Price: {price}\n")
+                else:
+                    f.write("\nNo new products found this week.\n")
+
+                if self.products_to_deactivate:
+                    f.write(f"\n{len(self.products_to_deactivate)} products to deactivate:\n")
+                    for ref in self.products_to_deactivate:
+                        f.write(f"Reference {ref}\n")
+                else:
+                    f.write("\nNo products to deactivate this week.\n")
+
+        notification_message = (
+            f"Price changes: {len(self.price_changes)}\n"
+            f"New products: {len(self.new_products)}\n"
+            f"Products to deactivate: {len(self.products_to_deactivate)}"
         )
-        
-        st.dataframe(price_changes_df)
 
-        st.subheader("New Products")
-        new_products_df = pd.DataFrame(new_products, columns=['Reference', 'Price'])
-        st.dataframe(new_products_df)
+        notification.notify(
+            title="Product Update Summary",
+            message=notification_message,
+            timeout=10
+        )
 
-        st.subheader("Products to Deactivate")
-        products_to_deactivate_df = pd.DataFrame({'Reference': products_to_deactivate})
-        st.dataframe(products_to_deactivate_df)
-
-        # Display a summary chart
-        st.subheader("Summary")
-        summary_data = [
-            {'Metric': 'Price Changes', 'Value': num_price_changes},
-            {'Metric': 'New Products', 'Value': len(new_products)},
-            {'Metric': 'Products to Deactivate', 'Value': len(products_to_deactivate)}
-        ]
-        summary_df = pd.DataFrame(summary_data)
-        chart = alt.Chart(summary_df).mark_bar().encode(
-            x='Metric',
-            y='Value',
-            color=alt.condition(
-                alt.datum.Metric == 'Price Changes',
-                alt.value('green'),
-                alt.value('red')
+        with open(temp_filename, 'r') as file:
+            st.download_button(
+                label="Download Price Changes Summary",
+                data=file.read(),
+                file_name=filename,
+                mime="text/plain"
             )
-        ).properties(
-            width=600,
-            height=400
-        )
-        st.altair_chart(chart, use_container_width=True)
+
+    def save_new_products(self):
+        """Saves new products to an Excel file."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        new_file = f"new_products_{today}.xlsx"
+        df = pd.DataFrame(self.new_products, columns=['Reference', 'Price'])
+        df.to_excel(new_file, index=False)
+        print(f"New products saved to {new_file}")
+
+
+class PriceUpdateAppUI:
+    def __init__(self):
+        self.logic = PriceUpdateLogic()
+
+    def run(self):
+        st.set_page_config(page_title="Product Update App", layout="wide", initial_sidebar_state="expanded")
+        st.title("Product Update App")
+        st.sidebar.title("Options")
+
+        file1 = st.sidebar.file_uploader("Select the older Excel file", type=["xlsx"])
+        file2 = st.sidebar.file_uploader("Select the newer Excel file", type=["xlsx"])
+
+        if file1 and file2:
+            self.logic.compare_files(file1, file2)
+            self.logic.notify_changes()
+            self.logic.save_new_products()
+
+            st.write(f"Processing completed. {len(self.logic.price_changes)} price changes detected.")
+
+            # Price Changes DataFrame
+            st.subheader("Price Changes")
+            price_changes_df = pd.DataFrame(self.logic.price_changes, columns=['Reference', 'Old Price', 'New Price'])
+
+            # Ensure proper formatting for Old Price and New Price
+            price_changes_df['Old Price'] = price_changes_df['Old Price'].apply(lambda x: f"{x:.2f}")
+            price_changes_df['New Price'] = price_changes_df['New Price'].apply(lambda x: f"{x:.2f}")
+
+            # Calculate the Difference between Old Price and New Price
+            price_changes_df['Difference'] = price_changes_df['New Price'].apply(pd.to_numeric) - price_changes_df['Old Price'].apply(pd.to_numeric)
+
+            # Format the Difference column to show positive differences with a "+" sign
+            price_changes_df['Difference'] = price_changes_df['Difference'].apply(lambda x: f"+{x:.2f}" if x > 0 else f"{x:.2f}")
+
+            # Apply color formatting to the 'Difference' column based on the value
+            def color_difference(val):
+                color = 'green' if float(val) > 0 else 'red'
+                return f'color: {color}'
+
+            # Apply the color formatting function to the 'Difference' column
+            styled_price_changes_df = price_changes_df.style.applymap(color_difference, subset=['Difference'])
+
+            # Display the Price Changes with color formatting in a table
+            st.dataframe(styled_price_changes_df)
+
+
+            st.subheader("New Products")
+            new_products_df = pd.DataFrame(self.logic.new_products, columns=['Reference', 'Price'])
+            st.dataframe(new_products_df)
+
+            st.subheader("Products to Deactivate")
+            products_to_deactivate_df = pd.DataFrame({'Reference': self.logic.products_to_deactivate})
+            st.dataframe(products_to_deactivate_df)
+
+            st.subheader("Summary")
+            summary_data = [
+                {'Metric': 'Price Changes', 'Value': len(self.logic.price_changes)},
+                {'Metric': 'New Products', 'Value': len(self.logic.new_products)},
+                {'Metric': 'Products to Deactivate', 'Value': len(self.logic.products_to_deactivate)}
+            ]
+            summary_df = pd.DataFrame(summary_data)
+            chart = alt.Chart(summary_df).mark_bar().encode(
+                x='Metric',
+                y='Value',
+                color=alt.condition(
+                    alt.datum.Metric == 'Price Changes',
+                    alt.value('green'),
+                    alt.value('red')
+                )
+            ).properties(width=600, height=400)
+            st.altair_chart(chart, use_container_width=True)
 
 if __name__ == "__main__":
-    main()
+    app_ui = PriceUpdateAppUI()
+    app_ui.run()
