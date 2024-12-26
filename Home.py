@@ -1,4 +1,6 @@
 import streamlit as st
+import os
+os.system('playwright install')
 
 # Page Configuration
 st.set_page_config(
