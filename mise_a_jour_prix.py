@@ -7,6 +7,7 @@ import altair as alt
 import re
 import tempfile
 
+
 class PriceUpdateLogic:
     def __init__(self):
         self.price_changes = []
@@ -137,10 +138,6 @@ class PriceUpdateAppUI:
             st.subheader("Price Changes")
             price_changes_df = pd.DataFrame(self.logic.price_changes, columns=['Reference', 'Old Price', 'New Price'])
 
-            # Ensure proper formatting for Old Price and New Price
-            price_changes_df['Old Price'] = price_changes_df['Old Price'].apply(lambda x: f"{x:.2f}")
-            price_changes_df['New Price'] = price_changes_df['New Price'].apply(lambda x: f"{x:.2f}")
-
             # Calculate the Difference between Old Price and New Price
             price_changes_df['Difference'] = price_changes_df['New Price'].apply(pd.to_numeric) - price_changes_df['Old Price'].apply(pd.to_numeric)
 
@@ -158,9 +155,12 @@ class PriceUpdateAppUI:
             # Display the Price Changes with color formatting in a table
             st.dataframe(styled_price_changes_df)
 
-
             st.subheader("New Products")
             new_products_df = pd.DataFrame(self.logic.new_products, columns=['Reference', 'Price'])
+
+            # Format Prices in the New Products table
+            new_products_df['Price'] = new_products_df['Price'].apply(lambda x: f"{x:.2f}")
+
             st.dataframe(new_products_df)
 
             st.subheader("Products to Deactivate")
@@ -174,16 +174,22 @@ class PriceUpdateAppUI:
                 {'Metric': 'Products to Deactivate', 'Value': len(self.logic.products_to_deactivate)}
             ]
             summary_df = pd.DataFrame(summary_data)
+
+            # Change the color for New Products to blue
             chart = alt.Chart(summary_df).mark_bar().encode(
                 x='Metric',
                 y='Value',
-                color=alt.condition(
-                    alt.datum.Metric == 'Price Changes',
-                    alt.value('green'),
-                    alt.value('red')
+                color=alt.Color(
+                'Metric:N',
+                scale=alt.Scale(domain=['Price Changes', 'New Products', 'Products to Deactivate'],
+                        range=['green', 'blue', 'red'])  # Specify the color mapping for each metric
                 )
-            ).properties(width=600, height=400)
+                ).properties(width=600, height=400)
+
             st.altair_chart(chart, use_container_width=True)
+
+
+
 
 if __name__ == "__main__":
     app_ui = PriceUpdateAppUI()
