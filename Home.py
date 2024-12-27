@@ -1,8 +1,12 @@
 import streamlit as st
 import os
-os.system('playwright install')
+import subprocess
 
-# Page Configuration
+try:
+    from playwright import install
+    install()
+except ImportError:
+    pass
 st.set_page_config(
     page_title="RestauConcept Admin Tools",
     page_icon="🛠️",

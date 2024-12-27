@@ -6,6 +6,7 @@ import pandas as pd
 import altair as alt
 import re
 import tempfile
+import sys
 
 
 class PriceUpdateLogic:
@@ -85,18 +86,21 @@ class PriceUpdateLogic:
                         f.write(f"Reference {ref}\n")
                 else:
                     f.write("\nNo products to deactivate this week.\n")
+        if sys.platform in ['win32', 'darwin', 'linux']:
+            try:
+                notification_message = (
+                    f"Price changes: {len(self.price_changes)}\n"
+                    f"New products: {len(self.new_products)}\n"
+                    f"Products to deactivate: {len(self.products_to_deactivate)}"
+                )
 
-        notification_message = (
-            f"Price changes: {len(self.price_changes)}\n"
-            f"New products: {len(self.new_products)}\n"
-            f"Products to deactivate: {len(self.products_to_deactivate)}"
-        )
-
-        notification.notify(
-            title="Product Update Summary",
-            message=notification_message,
-            timeout=10
-        )
+                notification.notify(
+                    title="Product Update Summary",
+                    message=notification_message,
+                    timeout=10
+                )
+            except Exception as e:
+                print(f"Error sending notification: {e}")
 
         with open(temp_filename, 'r') as file:
             st.download_button(
