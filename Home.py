@@ -1,12 +1,16 @@
 import streamlit as st
 import os
+import platform
 import subprocess
+from subprocess import run, CalledProcessError
+import sys
 
-try:
-    from playwright import install
-    install()
-except ImportError:
-    pass
+# Ensure correct event loop policy for Windows
+if platform.system() == "Windows":
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+
 st.set_page_config(
     page_title="RestauConcept Admin Tools",
     page_icon="🛠️",
