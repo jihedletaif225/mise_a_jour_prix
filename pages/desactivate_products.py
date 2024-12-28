@@ -1,4 +1,5 @@
 
+
 import logging
 import streamlit as st
 from playwright.async_api import async_playwright
@@ -45,20 +46,21 @@ class ProductDeactivator:
         """Searches for a product by reference and unchecks the active checkbox."""
         try:
             logger.info(f"Navigating to search page for reference: {reference}...")
-            await page.goto("https://www.restoconcept.com/admin/marges.asp")
-            await page.fill('input[name="rch_phrase"]', reference)
-            await page.click('button[type="submit"]')
+            await page.goto("https://www.restoconcept.com/admin/SA_prod.asp")
+            await page.fill('input[name="showPhrase"]', reference)
+            await page.click('button:has-text("Rechercher")')
 
-            logger.info("Waiting for the checkbox...")
-            checkbox_selector = 'td[style="padding:4px; border:1px #666 solid; text-align:center;"] input[type="checkbox"][name="active"]'
+
+            await page.click('tr td a:has-text("Editer")')
+
+            checkbox_selector = 'img[alt="Décocher tout"]'
             await page.wait_for_selector(checkbox_selector, timeout=5000)
 
             logger.info("Unchecking the checkbox...")
-            checkbox = await page.query_selector(checkbox_selector)
-            await checkbox.uncheck()
+            await page.click(checkbox_selector)
 
             logger.info("Submitting changes...")
-            await page.click('td[style="padding:4px; border:1px #666 solid; text-align:center;"] input[type="submit"][value="Actualiser"]')
+            await page.click('form[name="prodForm"] button:has-text("Mettre à jour")')
             logger.info(f"Successfully processed reference: {reference}")
             return True
         except Exception as e:
