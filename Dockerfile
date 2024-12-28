@@ -1,29 +1,37 @@
 
-# Use the Playwright Python base image as a starting point
+# Use a specific, stable base image
 FROM mcr.microsoft.com/playwright/python:v1.38.0-focal
 
-# Install system dependencies (libgstreamer, libavif, etc.)
-RUN apt-get update && apt-get install -y \
+# Avoid combining commands unnecessarily. It makes debugging harder.
+# Update apt repositories
+RUN apt-get update
+
+# Install system dependencies. Use --no-install-recommends to reduce image size
+RUN apt-get install -y --no-install-recommends \
     libgstreamer-gl1.0-0 \
     libgstreamer-plugins-bad1.0-0 \
     libavif-dev \
     libenchant-2-2 \
     libsecret-1-0 \
     libmanette-0.2-0 \
-    libgles2-mesa && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    libgles2-mesa \
+    && rm -rf /var/lib/apt/lists/* # Clean up apt cache in the same RUN command
 
-# Copy the requirements.txt and install Python dependencies
-COPY requirements.txt . 
-RUN pip install -r requirements.txt
-
-# Install Playwright dependencies
+# Install Playwright system dependencies
 RUN npx playwright install-deps
 
-# Copy the rest of your application code
-COPY . /app
+# Install only Chromium browser
+RUN npx playwright install chromium
+
+# Set working directory
 WORKDIR /app
 
-# Set the default command to run your app (replace 'app.py' with your actual entry file)
+# Copy only requirements first for caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt # --no-cache-dir is important in Docker
+
+# Copy the rest of your application code
+COPY . .
+
+# Set the default command to run your app
 CMD ["python", "Home.py"]
