@@ -1,6 +1,5 @@
 
-FROM mcr.microsoft.com/playwright/python:v1.38.0-focal
-
+FROM mcr.microsoft.com/playwright/python:latest 
 # Install system dependencies needed for Node.js and other tools
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
