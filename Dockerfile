@@ -6,7 +6,7 @@ FROM mcr.microsoft.com/playwright/python:v1.38.0-focal
 RUN apt-get update && apt-get install -y \
     libgstreamer-gl1.0-0 \
     libgstreamer-plugins-bad1.0-0 \
-    libavif-dev \  # Use the correct version for AVIF
+    libavif-dev \
     libenchant-2-2 \
     libsecret-1-0 \
     libmanette-0.2-0 \
@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements.txt and install Python dependencies
-COPY requirements.txt .
+COPY requirements.txt . 
 RUN pip install -r requirements.txt
 
 # Install Playwright dependencies
