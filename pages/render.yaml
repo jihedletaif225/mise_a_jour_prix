@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: playwright-app
-    env: docker
-    buildCommand: docker build -t your-app-image .
-    startCommand: python Home.py  # Replace with your app’s entry point (e.g., app.py or main.py)
-    plan: free
