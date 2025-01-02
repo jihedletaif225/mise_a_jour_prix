@@ -1,5 +1,6 @@
 
 
+
 import logging
 import streamlit as st
 from playwright.async_api import async_playwright
@@ -12,6 +13,13 @@ if platform.system() == "Windows":
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Constants for readability and maintainability
+LOGIN_PAGE_URL = "https://www.restoconcept.com/admin/logon.asp"
+ADMIN_DEFAULT_URL = "https://www.restoconcept.com/admin/default.asp"
+FOOTER_SELECTOR = (
+    'td[align="center"][style="background-color:#eeeeee"]:has-text("© Copyright 2025 - Restoconcept")'
+)
 
 class ProductDeactivator:
     """Handles the logic and automation tasks for deactivating products."""
@@ -31,13 +39,15 @@ class ProductDeactivator:
 
             # Check for successful login
             try:
-                logger.info("Verifying successful login...")
-                await page.wait_for_selector('td[align="center"][style="background-color:#eeeeee"]:has-text("© Copyright 2024 - Restoconcept")', timeout=5000)
-                logger.info("Login successful.")
+                page.wait_for_selector(FOOTER_SELECTOR, timeout=5000)
                 return True
             except Exception:
-                logger.error("Login failed: Footer not found.")
-                return False
+                if page.url == ADMIN_DEFAULT_URL:
+                    logger.info("Login successful: Redirect to admin default page detected.")
+                    return True
+                else:
+                    logger.error("Login failed: Neither footer nor admin default page detected.")
+                    return False
         except Exception as e:
             logger.error(f"Error during login: {e}")
             return False
