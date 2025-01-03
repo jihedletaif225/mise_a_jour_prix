@@ -1,12 +1,12 @@
 
 
 
-
 import logging
 import streamlit as st
 from playwright.async_api import async_playwright
 import asyncio
 import platform
+import pandas as pd
 
 if platform.system() == "Windows":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -24,12 +24,12 @@ FOOTER_SELECTOR = (
     'td[align="center"][style="background-color:#eeeeee"]:has-text("© Copyright 2025 - Restoconcept")'
 )
 
-class ProductDeactivator:
-    """Handles the logic and automation tasks for deactivating products."""
-
-    def __init__(self, username, password):
+class RestauConceptScraper:
+    """Handles the scraping logic for RestauConcept."""
+    def __init__(self, username: str, password: str, marque: str):
         self.username = username
         self.password = password
+        self.marque = marque
 
     async def login(self, page) -> bool:
         """Logs into the Restoconcept admin portal."""
@@ -55,30 +55,46 @@ class ProductDeactivator:
             logger.error(f"Error during login: {e}")
             return False
 
-    async def perform_search_and_uncheck(self, page, reference) -> bool:
+    async  def scrape_marque(self):  
         """Searches for a product by reference and unchecks the active checkbox."""
-        try:
-            logger.info(f"Navigating to search page for reference: {reference}...")
-            await page.goto("https://www.restoconcept.com/admin/SA_prod.asp")
-            await page.fill('input[name="showPhrase"]', reference)
-            await page.click('button:has-text("Rechercher")')
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
 
-
-            await page.click('tr td a:has-text("Editer")')
-
-            checkbox_selector = 'img[alt="Décocher tout"]'
-            await page.wait_for_selector(checkbox_selector, timeout=5000)
-
-            logger.info("Unchecking the checkbox...")
-            await page.click(checkbox_selector)
-
-            logger.info("Submitting changes...")
-            await page.click('form[name="prodForm"] button:has-text("Mettre à jour")')
-            logger.info(f"Successfully processed reference: {reference}")
-            return True
-        except Exception as e:
-            logger.error(f"Error processing reference {reference}: {e}")
-            return False
+            if await self.login(page):
+                try:
+                    await page.goto("https://www.restoconcept.com/admin/SA_prod.asp", wait_until="networkidle")
+                    await page.select_option('select[name="marque"]', self.marque)
+                    await page.click('button:has-text("Rechercher")')
+                    await page.wait_for_load_state("networkidle")
+                    edit_links = []
+                    while True:
+                        rows = await page.query_selector_all('table.listTable tr')
+                        for row in rows:
+                            tds = await row.query_selector_all("td")
+                            if len(tds) >= 5:
+                                first_td = await tds[0].inner_text()
+                                second_td = await tds[1].inner_text()
+                                eighth_td = await tds[7].inner_text()
+                                edit_links.append({
+                                    "Référence": second_td,
+                                    "No": first_td,
+                                    "Prix public": eighth_td,
+                                })
+                        next_links = await page.locator('a:has-text("Suiv.")').all()
+                        if not next_links:
+                            break
+                        await next_links[0].click()
+                        await page.wait_for_load_state("networkidle")
+                    await browser.close()
+                    return edit_links
+                except Exception as e:
+                    logger.error(f"Error during scraping: {e}")
+                    await browser.close()
+                    return None
+            else:
+                await browser.close()
+                return None
 
     async def run_automation(self, references, headless=True):
         """Runs the automation process for multiple references."""
@@ -103,46 +119,59 @@ class ProductDeactivator:
             return True
 
 
-class ProductDeactivationApp:
-    """Manages the Streamlit UI for the product deactivation tool."""
+class ScraperApp:
+    """Streamlit app for RestauConcept data scraper."""
 
     def __init__(self):
         self.username = None
         self.password = None
-        self.references = []
-        self.headless = True
+        self.marque = None
+        self.scraper = None
 
     def run(self):
-        """Launches the Streamlit interface."""
-        st.title("Product Deactivation Tool")
+        """Run the Streamlit app."""
+        st.title("RestauConcept Data Scraper")
+        st.sidebar.header("User Login")
+        self.username = st.sidebar.text_input("Username")
+        self.password = st.sidebar.text_input("Password", type="password")
+        self.marque = st.sidebar.text_input("Supplier/Brand (Marque)").strip()
+        if st.sidebar.button("Start Scraping"):
+            self.start_scraping()
+        st.sidebar.markdown("""
+        ---
+        **Instructions:**
+        1. Enter your username and password.
+        2. Input the supplier/brand (marque).
+        3. Click "Start Scraping" to fetch the data.
+        """)
+    def start_scraping(self):
+        """Start the scraping process."""
+        if not self.username or not self.password or not self.marque:
+            st.error("Please fill out all fields.")
+            return
+        with st.spinner("Scraping data, please wait..."):
 
-        # Input fields
-        self.username = st.text_input("Username", value="")
-        self.password = st.text_input("Password", value="", type="password")
-        references_text = st.text_area("Product References (one per line)")
-        self.references = [ref.strip() for ref in references_text.splitlines() if ref.strip()]
-        self.headless = st.checkbox("Run in headless mode?", value=True)
-
-        # Start automation button
-        if st.button("Start Deactivation"):
-            if self.username and self.password and self.references:
-                st.info("Starting deactivation process...")
-                self.start_automation()
-            else:
-                st.warning("Please fill out all required fields.")
-
-    def start_automation(self):
-        """Initiates the deactivation process."""
-        with st.spinner("Running automation..."):
             try:
-                deactivator = ProductDeactivator(self.username, self.password)
-                asyncio.run(deactivator.run_automation(self.references, self.headless))
-                st.success("Deactivation completed successfully.")
+                # Initialize scraper and start scraping
+                self.scraper = RestauConceptScraper(self.username, self.password, self.marque)
+                links = asyncio.run(self.scraper.scrape_marque())
+                if links:
+                    st.success(f"Found {len(links)} products for marque {self.marque}.")
+                    df = pd.DataFrame(links)
+                    st.write(df)
+                    # Export to Excel
+                    output_file = f"{self.marque}_products.xlsx"
+                    df.to_excel(output_file, index=False)
+                    with open(output_file, "rb") as file:
+                        st.download_button("Download Excel File", file, file_name=output_file)
+                else:
+                    st.warning("No products found or login failed.")
+
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
 
 # Run the Streamlit app
 if __name__ == "__main__":
-    app = ProductDeactivationApp()
+    app = ScraperApp()
     app.run()
